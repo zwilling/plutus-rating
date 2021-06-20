@@ -1,12 +1,12 @@
-# Plutus Recommendation Project
+# Plutus Rating Project
 
-An on-chain recommendation system for smart contracts on Cardano.
+An on-chain rating system for smart contracts on Cardano.
 
 This is a self-learning project about designing and writing smart contracts in Cardano.
 
 ## Idea
 
-- Recommendation system allowing people to rate smart contracts, allowing those contracts to gain reputation
+- Rating system allowing people to rate smart contracts, allowing those contracts to gain reputation
 - Ratings processed and stored on-chain for transparency and trust
   - Each rating as eUTXO
   - Script adress parameterized by the script to be rated
