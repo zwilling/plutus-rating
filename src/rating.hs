@@ -14,34 +14,54 @@
 module Rating.Rating where
 
 import           Control.Monad        hiding (fmap)
-import           Data.Aeson           (ToJSON, FromJSON)
+import           Data.Aeson           (FromJSON, ToJSON)
 import           Data.Map             as Map
 import           Data.Text            (Text)
 import           Data.Void            (Void)
 import           GHC.Generics         (Generic)
-import           Plutus.Contract      hiding (when)
-import qualified PlutusTx
-import           PlutusTx.Prelude     hiding (Semigroup(..), unless)
 import           Ledger               hiding (singleton)
+import           Ledger.Ada           as Ada
 import           Ledger.Constraints   as Constraints
 import qualified Ledger.Typed.Scripts as Scripts
-import           Ledger.Ada           as Ada
-import           Playground.Contract  (printJson, printSchemas, ensureKnownCurrencies, stage, ToSchema)
+import           Playground.Contract  (ToSchema, ensureKnownCurrencies,
+                                       printJson, printSchemas, stage)
 import           Playground.TH        (mkKnownCurrencies, mkSchemaDefinitions)
 import           Playground.Types     (KnownCurrency (..))
+import           Plutus.Contract      hiding (when)
+import qualified PlutusTx
+import           PlutusTx.Prelude     hiding (Semigroup (..), unless)
 import           Prelude              (Semigroup (..))
 import           Text.Printf          (printf)
 
 data RatingParam = RatingParam
-    { 
+    {
+        -- | The Address of the script being rated on
+        scriptAddress :: !PubkeyHash
     } deriving Show
 
 PlutusTx.unstableMakeIsData ''RatingParam
 PlutusTx.makeLift ''RatingParam
 
+data RatingRedeemer =
+    -- | Edit an existing rating to a new value
+    Edit Integer
+    -- | Removing a rating
+    | Delete
+    deriving (Show)
+
+PlutusTx.unstableMakeIsData ''RatingRedeemer
+
+{--|
+    Datum of rating UTXOs containing the rating value (1-5) and the PubKeyHash of the person rating
+-}
+data RatingDatum = RatingDatum Integer !PubKeyHash
+    deriving Show
+
+PlutusTx.unstableMakeIsData ''RatingDatum
+
 {-# INLINABLE mkValidator #-}
-mkValidator :: RatingParam -> () -> () -> ScriptContext -> Bool
-mkValidator p () () ctx = False
+mkValidator :: RatingParam -> RatingDatum -> RatingRedeemer -> ScriptContext -> Bool
+mkValidator ratingRaram ratingDatum ratingRedeemer ctx = False
 
 data Rating
 instance Scripts.ScriptType Rating where
