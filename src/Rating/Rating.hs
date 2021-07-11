@@ -102,6 +102,7 @@ createRating rapParams = do
                 { ratedScriptAddress = rapScriptAddress rapParams
                 }
         ratingDatum = RatingDatum (rapScore rapParams) ownKey
+        -- ToDo: create rating utxo with datum to submitt transaction
         tx = mustPayToTheScript ratingDatum $ Ada.lovelaceValueOf 1
     ledgerTx <- submitTxConstraints (inst p) tx
     void $ awaitTxConfirmed $ txId ledgerTx

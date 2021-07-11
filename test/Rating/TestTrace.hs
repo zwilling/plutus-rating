@@ -45,7 +45,9 @@ test = runEmulatorTraceIO myTrace
 myTrace :: EmulatorTrace ()
 myTrace = do
     let op = RatingActionParams
-                { rapScriptAddress = pubKeyHash $ walletPubKey $ Wallet 1
+                {
+                -- TODO include other contracts to have script addresses to rate
+                rapScriptAddress = pubKeyHash $ walletPubKey $ Wallet 1
                 , rapScore = 5
                 }
 
