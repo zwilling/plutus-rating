@@ -92,29 +92,57 @@ data RatingActionParams = RatingActionParams
 type RatingSchema =
     BlockchainActions
         .\/ Endpoint "createRating" RatingActionParams
-        -- .\/ Endpoint "editRating" RatingActionParams
+        .\/ Endpoint "editRating" RatingActionParams
         -- .\/ Endpoint "deleteRating" !PubKeyHash
 
 createRating :: RatingActionParams -> Contract (Last RatingParam) RatingSchema Text ()
 createRating rapParams = do
     ownKey <- pubKeyHash <$> ownPubKey
-    let p  = RatingParam
-                { ratedScriptAddress = rapScriptAddress rapParams
-                }
+    let scriptParams  = RatingParam{ ratedScriptAddress = rapScriptAddress rapParams}
         ratingDatum = RatingDatum (rapScore rapParams) ownKey
         -- ToDo: create rating utxo with datum to submitt transaction
         tx = mustPayToTheScript ratingDatum $ Ada.lovelaceValueOf 1
-    ledgerTx <- submitTxConstraints (inst p) tx
+    ledgerTx <- submitTxConstraints (inst scriptParams) tx
     void $ awaitTxConfirmed $ txId ledgerTx
     logInfo @String $ printf "Send test transaction to rate %s"
         (show $ rapScriptAddress rapParams)
 
--- ToDo: implement editRating
+editRating :: RatingActionParams -> Contract (Last RatingParam) RatingSchema Text ()
+editRating rapParams = do
+    ownKey <- pubKeyHash <$> ownPubKey
+
+    let scriptParams  = RatingParam{ ratedScriptAddress = rapScriptAddress rapParams}
+
+    ratingUtxos <- utxoAt $ scrAddress scriptParams
+
+    let newRatingDatum = RatingDatum (rapScore rapParams) ownKey
+
+        isSuitable :: TxOutTx -> Bool
+        isSuitable o = case txOutDatumHash $ txOutTxOut o of
+            Nothing -> False
+            Just h -> case Map.lookup h $ txData $ txOutTxTx o of
+                Nothing -> False
+                Just (Datum e) -> case PlutusTx.fromData e of
+                    Nothing                  -> False
+                    Just (RatingDatum _ key) -> key == ownKey
+                    Just _                   -> False
+
+    case find (isSuitable . snd) $ Map.toList ratingUtxos of
+        Nothing -> throwError "user hasn't rated yet"
+        Just (oref, _) -> do
+            let tx = mustSpendScriptOutput oref (Redeemer $ PlutusTx.toData $ Edit  $ rapScore rapParams) <>
+                     mustPayToTheScript newRatingDatum (Ada.lovelaceValueOf 1)
+
+            ledgerTx <- submitTxConstraints (inst scriptParams) tx
+            void $ awaitTxConfirmed $ txId ledgerTx
+            logInfo @String $ printf "Send test transaction to edit rating of %s"
+                (show $ rapScriptAddress rapParams)
+
 -- ToDo: implement deleteRating
 
 endpoints :: Contract (Last RatingParam) RatingSchema Text ()
-endpoints = createRating' >> endpoints
+endpoints = (createRating' `select` editRating') >> endpoints
   where
     createRating' = endpoint @"createRating" >>= createRating
-    -- editRating' = endpoint @"editRating" >>= grab
-    -- deleteRating' = endpoint @"deleteRating" >>= grab
+    editRating' = endpoint @"editRating" >>= editRating
+    -- deleteRating' = endpoint @"deleteRating" >>= deleteRating
