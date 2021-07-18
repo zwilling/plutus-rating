@@ -89,14 +89,6 @@ data RatingActionParams = RatingActionParams
     , rapScore       :: !Integer
     } deriving (Show, Generic, ToJSON, FromJSON)
 
-data EditActionParams = EditActionParams
-    {
-    -- | The script to be rated
-    rapScriptAddress2 :: !PubKeyHash
-    -- | The new rating score
-    , newRapScore     :: !Integer
-    } deriving (Show, Generic, ToJSON, FromJSON)
-
 type RatingSchema =
     BlockchainActions
         .\/ Endpoint "createRating" RatingActionParams
@@ -117,25 +109,25 @@ createRating rapParams = do
     logInfo @String $ printf "Send test transaction to rate %s"
         (show $ rapScriptAddress rapParams)
 
-editRating :: EditActionParams -> Contract (Last RatingParam) RatingSchema Text ()
+editRating :: RatingActionParams -> Contract (Last RatingParam) RatingSchema Text ()
 editRating rapParams = do
     ownKey <- pubKeyHash <$> ownPubKey
-    ratingUtxos <- utxoAt $ scrAddress RatingParam{ ratedScriptAddress = rapScriptAddress2 rapParams}
+    ratingUtxos <- utxoAt $ scrAddress RatingParam{ ratedScriptAddress = rapScriptAddress rapParams}
     let p  = RatingParam
-            { ratedScriptAddress = rapScriptAddress2 rapParams
+            { ratedScriptAddress = rapScriptAddress rapParams
             }
 
-        newRatingDatum = RatingDatum (newRapScore rapParams) ownKey
+        newRatingDatum = RatingDatum (rapScore rapParams) ownKey
 
         tx = case find f $ Map.toList ratingUtxos of
-            Nothing -> throwError "user hasn't rated %s yet" (show $ rapScriptAddress2 rapParams)
-            Just (oref, o) -> mustSpendScriptOutput oref Edit $ newRapScore rapParams <>
+            Nothing -> throwError "user hasn't rated %s yet" (show $ rapScriptAddress rapParams)
+            Just (oref, o) -> mustSpendScriptOutput oref Edit $ rapScore rapParams <>
                                 mustPayToTheScript newRatingDatum $ Ada.lovelaceValueOf 1
 
     ledgerTx <- submitTxConstraints (inst p) tx
     void $ awaitTxConfirmed $ txId ledgerTx
     logInfo @String $ printf "Send test transaction to edit rating of %s"
-        (show $ rapScriptAddress2 rapParams)
+        (show $ rapScriptAddress rapParams)
 
     where
 
@@ -145,7 +137,7 @@ editRating rapParams = do
         isSuitable :: TxOutTx -> Bool
         isSuitable o = case txOutDatumHash $ txOutTxOut o of
             Nothing -> False
-            Just h -> case Map.lookup h $ txData $txOutTxTx o of
+            Just h -> case Map.lookup h $ txData $ txOutTxTx o of
                 Nothing -> False
                 Just (Datum e) -> case PlutusTx.fromData e of
                     Nothing                -> False
