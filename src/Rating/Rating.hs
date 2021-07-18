@@ -89,10 +89,18 @@ data RatingActionParams = RatingActionParams
     , rapScore       :: !Integer
     } deriving (Show, Generic, ToJSON, FromJSON)
 
+data EditActionParams = EditActionParams
+    {
+    -- | The script to be rated
+    rapScriptAddress2 :: !PubKeyHash
+    -- | The new rating score
+    , newRapScore     :: !Integer
+    } deriving (Show, Generic, ToJSON, FromJSON)
+
 type RatingSchema =
     BlockchainActions
         .\/ Endpoint "createRating" RatingActionParams
-        -- .\/ Endpoint "editRating" RatingActionParams
+        .\/ Endpoint "editRating" RatingActionParams
         -- .\/ Endpoint "deleteRating" !PubKeyHash
 
 createRating :: RatingActionParams -> Contract (Last RatingParam) RatingSchema Text ()
@@ -109,12 +117,46 @@ createRating rapParams = do
     logInfo @String $ printf "Send test transaction to rate %s"
         (show $ rapScriptAddress rapParams)
 
--- ToDo: implement editRating
+editRating :: EditActionParams -> Contract (Last RatingParam) RatingSchema Text ()
+editRating rapParams = do
+    ownKey <- pubKeyHash <$> ownPubKey
+    ratingUtxos <- utxoAt $ scrAddress RatingParam{ ratedScriptAddress = rapScriptAddress2 rapParams}
+    let p  = RatingParam
+            { ratedScriptAddress = rapScriptAddress2 rapParams
+            }
+
+        newRatingDatum = RatingDatum (newRapScore rapParams) ownKey
+
+        tx = case find f $ Map.toList ratingUtxos of
+            Nothing -> throwError "user hasn't rated %s yet" (show $ rapScriptAddress2 rapParams)
+            Just (oref, o) -> mustSpendScriptOutput oref Edit $ newRapScore rapParams <>
+                                mustPayToTheScript newRatingDatum $ Ada.lovelaceValueOf 1
+
+    ledgerTx <- submitTxConstraints (inst p) tx
+    void $ awaitTxConfirmed $ txId ledgerTx
+    logInfo @String $ printf "Send test transaction to edit rating of %s"
+        (show $ rapScriptAddress2 rapParams)
+
+    where
+
+        f :: (TxOutRef, TxOutTx) -> Bool
+        f (_, o) =  isSuitable o
+
+        isSuitable :: TxOutTx -> Bool
+        isSuitable o = case txOutDatumHash $ txOutTxOut o of
+            Nothing -> False
+            Just h -> case Map.lookup h $ txData $txOutTxTx o of
+                Nothing -> False
+                Just (Datum e) -> case PlutusTx.fromData e of
+                    Nothing                -> False
+                    Just RatingDatum _ key -> key == ownKey
+                    Just _                 -> False
+
 -- ToDo: implement deleteRating
 
 endpoints :: Contract (Last RatingParam) RatingSchema Text ()
 endpoints = createRating' >> endpoints
   where
     createRating' = endpoint @"createRating" >>= createRating
-    -- editRating' = endpoint @"editRating" >>= grab
+    editRating' = endpoint @"editRating" >>= grab
     -- deleteRating' = endpoint @"deleteRating" >>= grab
